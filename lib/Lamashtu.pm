@@ -8,6 +8,9 @@ use String::ShellQuote;
 use POE::Wheel::Run::DaemonHelper;
 use Sys::Syslog;
 
+# used for a holder for DH
+our $DH_HOLDER = {};
+
 =head1 NAME
 
 Lamashtu - 
@@ -213,8 +216,6 @@ sub new {
 		stdout      => $opts{stdout},
 		stderr_warn => $opts{stderr_warn},
 		sets        => $opts{sets},
-				dh          => {},
-				dh_inited          => [],
 		sub_dir     => $opts{sub_dir},
 	};
 	bless $self;
@@ -262,8 +263,7 @@ sub create_sessions {
 			status_syslog_warn => $self->{stderr_warn},
 		);
 		$dh->create_session;
-		$self->{dh}{$set} = $dh;
-		push(@{ $self->{dh_inited} }, $set);
+		$DH_HOLDER->{$set} = $dh;
 	} ## end foreach my $set (@sets)
 } ## end sub create_sessions
 
@@ -322,9 +322,12 @@ $SIG{QUIT} = \&DESTROY;
 sub DESTROY {
 	my ($self) = @_;
 
-	foreach my $set (@{ $self->{dh_inited} }) {
+	my @sets = keys( %{$DH_HOLDER} );
+
+	foreach my $set (@sets) {
+		eval { $Lamashtu::DH_HOLDER->{$set}->restart_ctl( restart_ctl => 0 ); };
 		eval {
-			my $pid     = $self->{dh}{$set}->pid;
+			my $pid     = $Lamashtu::DH_HOLDER->{$set}->pid;
 			my $outputs = `kill -9 $pid 2>&1`;
 		};
 	}
