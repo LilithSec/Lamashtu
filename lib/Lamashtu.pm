@@ -6,10 +6,10 @@ use warnings;
 use Sys::Syslog;
 use String::ShellQuote;
 use POE::Wheel::Run::DaemonHelper;
-use Sys::Syslog;
+use File::Path qw(make_path);
 
 # used for a holder for DH
-our $DH_HOLDER = {};
+our $TCPDUMP_DH_HOLDER = {};
 
 =head1 NAME
 
@@ -32,7 +32,7 @@ our $VERSION = '0.0.1';
     eval{
         # setup two sets for monitoring interface em0 and em1 and name them respectively
         $lamashtu = Lamashtu->new(
-            sets=>{
+            tcpdump_sets=>{
                 em0=>{args=>'-i em0',},
                 em1=>{args=>'-i em1',},
             },
@@ -51,7 +51,7 @@ our $VERSION = '0.0.1';
 
 =head2 new
 
-    - sets :: A hash ref of configured sets. They keys of the
+    - tcpdump_sets :: A hash ref of configured sets. They keys of the
               hash is used as the set names. Sets names must match
               /^0-9a-zA-Z\_$/
         Default :: undef
@@ -65,7 +65,7 @@ our $VERSION = '0.0.1';
         Default :: 0
 
     - pcap_dir :: The PCAP base directory to use.
-        Default :: /var/log/lamashtu
+        Default :: /var/log/lamashtu/pcap
 
     - sub_dir :: If true each set will be created as it's own dir under the pcap_dir.
         Default :: 0
@@ -87,7 +87,7 @@ Set keys are as below.
     eval{
         # setup two sets for monitoring interface em0 and em1 and name them respectively
         $lamashtu = Lamashtu->new(
-            sets=>{
+            tcpdump_sets=>{
                 em0=>{args=>'-i em0',},
                 em1=>{args=>'-i em1',},
             },
@@ -117,16 +117,16 @@ sub new {
 	if ( !defined( $opts{sub_dir} ) ) {
 		$opts{sub_dir} = 1;
 	}
-	if ( !defined( $opts{sets} ) ) {
+	if ( !defined( $opts{tcpdump_sets} ) ) {
 		die('$opts{sets} is undef');
-	} elsif ( ref( $opts{sets} ) ne 'HASH' ) {
-		die( '$opts{sets} ref is "' . ref( $opts{set} ) . '" and not HASH' );
+	} elsif ( ref( $opts{tcpdump_sets} ) ne 'HASH' ) {
+		die( '$opts{tcpdump_sets} ref is "' . ref( $opts{tcpdump_set} ) . '" and not HASH' );
 	}
 
 	#
 	# begin set sanity checking
 	#
-	my @sets = keys( %{ $opts{sets} } );
+	my @sets = keys( %{ $opts{tcpdump_sets} } );
 	# can't do anything if if this is undef
 	if ( !defined( $sets[0] ) ) {
 		die('No sets defined');
@@ -134,89 +134,89 @@ sub new {
 
 	# make sure each set and it's data is likely sane
 	foreach my $set (@sets) {
-		if ( !defined( $opts{sets}{$set}{type} ) ) {
+		if ( !defined( $opts{tcpdump_sets}{$set}{type} ) ) {
 			$opts{sets}{$set}{type} = 'tcpdump';
 		}    # make sure we what the type is
-		elsif ( $opts{sets}{$set}{type} ne 'tcpdump' ) {
-			die(      '$opts{sets}{'
+		elsif ( $opts{tcpdump_sets}{$set}{type} ne 'tcpdump' ) {
+			die(      '$opts{tcpdump_sets}{'
 					. $set
 					. '}{type} is set to "'
-					. $opts{sets}{$set}{type}
+					. $opts{tcpdump_sets}{$set}{type}
 					. '" which is not a known set type' );
 		}
 		# handle tcpdump related args
-		if ( $opts{sets}{$set}{type} eq 'tcpdump' ) {
+		if ( $opts{tcpdump_sets}{$set}{type} eq 'tcpdump' ) {
 			# if args is not set and is tcpdump, fill it in
 			# if set, do a basic sanity check
-			if ( !defined( $opts{sets}{$set}{args} ) ) {
-				$opts{sets}{$set}{args} = '-i ' . shell_quote($set);
-			} elsif ( $opts{sets}{$set}{args} =~ /^\-C/ || $opts{sets}{$set}{args} =~ /\ \-C/ ) {
+			if ( !defined( $opts{tcpdump_sets}{$set}{args} ) ) {
+				$opts{tcpdump_sets}{$set}{args} = '-i ' . shell_quote($set);
+			} elsif ( $opts{tcpdump_sets}{$set}{args} =~ /^\-C/ || $opts{tcpdump_sets}{$set}{args} =~ /\ \-C/ ) {
 				die(      '$opts{sets}{'
 						. $set
 						. '}{args} may not include -C ... '
 						. shell_quote( $opts{sets}{$set}{args} ) );
-			} elsif ( $opts{sets}{$set}{args} =~ /^\-G/ || $opts{sets}{$set}{args} =~ /\ \-G/ ) {
-				die(      '$opts{sets}{'
+			} elsif ( $opts{tcpdump_sets}{$set}{args} =~ /^\-G/ || $opts{tcpdump_sets}{$set}{args} =~ /\ \-G/ ) {
+				die(      '$opts{tcpdump_sets}{'
 						. $set
 						. '}{args} may not include -G ... '
-						. shell_quote( $opts{sets}{$set}{args} ) );
-			} elsif ( $opts{sets}{$set}{args} =~ /^\-w/ || $opts{sets}{$set}{args} =~ /\ \-w/ ) {
-				die(      '$opts{sets}{'
+						. shell_quote( $opts{tcpdump_sets}{$set}{args} ) );
+			} elsif ( $opts{tcpdump_sets}{$set}{args} =~ /^\-w/ || $opts{tcpdump_sets}{$set}{args} =~ /\ \-w/ ) {
+				die(      '$opts{tcpdump_sets}{'
 						. $set
 						. '}{args} may not include -w ... '
 						. shell_quote( $opts{sets}{$set}{args} ) );
-			} elsif ( $opts{sets}{$set}{args} =~ /^\-W/ || $opts{sets}{$set}{args} =~ /\ \-W/ ) {
+			} elsif ( $opts{tcpdump_sets}{$set}{args} =~ /^\-W/ || $opts{tcpdump_sets}{$set}{args} =~ /\ \-W/ ) {
 				die(      '$opts{sets}{'
 						. $set
 						. '}{args} may not include -W ... '
-						. shell_quote( $opts{sets}{$set}{args} ) );
-			} elsif ( $opts{sets}{$set}{args} !~ /^\-i/ && $opts{sets}{$set}{args} !~ /\ \-i/ ) {
-				die(      '$opts{sets}{'
+						. shell_quote( $opts{tcpdump_sets}{$set}{args} ) );
+			} elsif ( $opts{tcpdump_sets}{$set}{args} !~ /^\-i/ && $opts{tcpdump_sets}{$set}{args} !~ /\ \-i/ ) {
+				die(      '$opts{tcpdump_sets}{'
 						. $set
 						. '}{args} is set, but does not include -i ... '
-						. shell_quote( $opts{sets}{$set}{args} ) );
+						. shell_quote( $opts{tcpdump_sets}{$set}{args} ) );
 			}
 			# make sure we have something sane for size
-			if ( !defined( $opts{sets}{$set}{size} ) ) {
-				$opts{sets}{$set}{size} = 32;
-			} elsif ( $opts{sets}{$set}{size} !~ /^\d+$/ ) {
-				die(      '$opts{sets}{'
+			if ( !defined( $opts{tcpdump_sets}{$set}{size} ) ) {
+				$opts{tcpdump_sets}{$set}{size} = 32;
+			} elsif ( $opts{tcpdump_sets}{$set}{size} !~ /^\d+$/ ) {
+				die(      '$opts{tcpdump_sets}{'
 						. $set
 						. '}{size} is set to "'
-						. $opts{sets}{$set}{size}
+						. $opts{tcpdump_sets}{$set}{size}
 						. '" which not a positive integer' );
-			} elsif ( $opts{sets}{$set}{size} == 0 ) {
-				die(      '$opts{sets}{'
+			} elsif ( $opts{tcpdump_sets}{$set}{size} == 0 ) {
+				die(      '$opts{tcpdump_sets}{'
 						. $set
 						. '}{size} is set to "'
-						. $opts{sets}{$set}{size}
+						. $opts{tcpdump_sets}{$set}{size}
 						. '" needs to be a positive integer equal to or greater than 1' );
 			}
 			# make sure we have something sane for secs
-			if ( !defined( $opts{sets}{$set}{secs} ) ) {
-				$opts{sets}{$set}{secs} = 10;
-			} elsif ( $opts{sets}{$set}{secs} !~ /^[0-9]+$/ ) {
-				die(      '$opts{sets}{'
+			if ( !defined( $opts{tcpdump_sets}{$set}{secs} ) ) {
+				$opts{tcpdump_sets}{$set}{secs} = 10;
+			} elsif ( $opts{tcpdump_sets}{$set}{secs} !~ /^[0-9]+$/ ) {
+				die(      '$opts{tcpdump_sets}{'
 						. $set
 						. '}{secs} is set to "'
-						. $opts{sets}{$set}{secs}
+						. $opts{tcpdump_sets}{$set}{secs}
 						. '" which not a positive integer' );
-			} elsif ( $opts{sets}{$set}{secs} == 0 ) {
-				die(      '$opts{sets}{'
+			} elsif ( $opts{tcpdump_sets}{$set}{secs} == 0 ) {
+				die(      '$opts{tcpdump_sets}{'
 						. $set
 						. '}{secs} is set to "'
-						. $opts{sets}{$set}{secs}
+						. $opts{tcpdump_sets}{$set}{secs}
 						. '" needs to be a positive integer equal to or greater than 1' );
 			}
-		} ## end if ( $opts{sets}{$set}{type} eq 'tcpdump' )
+		} ## end if ( $opts{tcpdump_sets}{$set}{type} eq 'tcpdump')
 	} ## end foreach my $set (@sets)
 
 	my $self = {
-		pcap_dir    => $opts{pcap_dir},
-		stdout      => $opts{stdout},
-		stderr_warn => $opts{stderr_warn},
-		sets        => $opts{sets},
-		sub_dir     => $opts{sub_dir},
+		pcap_dir     => $opts{pcap_dir},
+		stdout       => $opts{stdout},
+		stderr_warn  => $opts{stderr_warn},
+		tcpdump_sets => $opts{tcpdump_sets},
+		sub_dir      => $opts{sub_dir},
 	};
 	bless $self;
 
@@ -235,23 +235,26 @@ L<POE::Wheel::Run::DaemonHelper>.
 sub create_sessions {
 	my $self = $_[0];
 
-	my @sets = keys( %{ $self->{sets} } );
+	my @tcpdump_sets = keys( %{ $self->{tcpdump_sets} } );
 
-	foreach my $set (@sets) {
+	foreach my $set (@tcpdump_sets) {
 		$self->log_message( status => 'Creating POE session for ' . $set );
 
 		my $outfile = $set . '.pcap-%s';
 		if ( $self->{sub_dir} ) {
 			$outfile = $set . '/' . $outfile;
+			eval { make_path( $self->{pcap_dir} . '/' . $set ) };
+		} else {
+			eval { make_path( $self->{pcap_dir} ) };
 		}
 		$outfile = $self->{pcap_dir} . '/' . $outfile;
 
 		my $program
 			= 'tcpdump -G '
-			. $self->{sets}{$set}{secs} . ' -C '
-			. $self->{sets}{$set}{size} . ' -w '
+			. $self->{tcpdump_sets}{$set}{secs} . ' -C '
+			. $self->{tcpdump_sets}{$set}{size} . ' -w '
 			. $outfile . ' '
-			. $self->{sets}{$set}{args};
+			. $self->{tcpdump_sets}{$set}{args};
 
 		$self->log_message( status => $set . ' Logger: ' . $program );
 
@@ -263,8 +266,8 @@ sub create_sessions {
 			status_syslog_warn => $self->{stderr_warn},
 		);
 		$dh->create_session;
-		$DH_HOLDER->{$set} = $dh;
-	} ## end foreach my $set (@sets)
+		$TCPDUMP_DH_HOLDER->{$set} = $dh;
+	} ## end foreach my $set (@tcpdump_sets)
 } ## end sub create_sessions
 
 =head2 log_message
@@ -322,14 +325,11 @@ $SIG{QUIT} = \&DESTROY;
 sub DESTROY {
 	my ($self) = @_;
 
-	my @sets = keys( %{$DH_HOLDER} );
+	my @tcpdump_sets = keys( %{$Lamashtu::TCPDUMP_DH_HOLDER} );
 
-	foreach my $set (@sets) {
-		eval { $Lamashtu::DH_HOLDER->{$set}->restart_ctl( restart_ctl => 0 ); };
-		eval {
-			my $pid     = $Lamashtu::DH_HOLDER->{$set}->pid;
-			my $outputs = `kill -9 $pid 2>&1`;
-		};
+	foreach my $set (@tcpdump_sets) {
+		eval { $Lamashtu::TCPDUMP_DH_HOLDER->{$set}->restart_ctl( restart_ctl => 0 ); };
+		eval { $Lamashtu::TCPDUMP_DH_HOLDER->{$set}->kill( signal => 'KILL' ); };
 	}
 } ## end sub DESTROY
 
