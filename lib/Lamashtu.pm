@@ -70,7 +70,10 @@ our $VERSION = '0.0.1';
     - sub_dir :: If true each set will be created as it's own dir under the pcap_dir.
         Default :: 0
 
-Set keys are as below.
+    - run_dir :: The directory to use the PID file and 
+        Default :: /var/run/lamashtu
+
+Tcpdump Set keys are as below.
 
     - args :: Args to pass to tcpdump. These should not include to the -w flag
               for tcpdump. If not defined, defaults to '-i $name' where $name is
