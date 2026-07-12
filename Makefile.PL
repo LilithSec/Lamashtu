@@ -13,16 +13,34 @@ my %WriteMakefileArgs = (
 	CONFIGURE_REQUIRES => {
 		'ExtUtils::MakeMaker' => '0',
 	},
+	EXE_FILES     => ['src_bin/lamashtu'],
 	TEST_REQUIRES => {
-		'Test::More' => '0',
+		'Test::More'      => '0',
+		'App::Cmd::Tester' => '0',
 	},
 	PREREQ_PM => {
-		'Sys::Syslog'                   => '0',
-		'String::ShellQuote'            => '0',
-		'POE::Wheel::Run::DaemonHelper' => '0.1.0',
+		'App::Cmd'                         => '0',
+		'JSON::MaybeXS'                    => '0',
+		'Net::Server::Daemonize'           => '0',
+		'POE'                              => '0',
+		'POE::Component::Server::JSONUnix' => '0.1.0',
+		'POE::Wheel::Run::DaemonHelper'    => '0.1.0',
+		'String::ShellQuote'               => '0',
+		'Sys::Syslog'                      => '0',
+		'TOML::Tiny'                       => '0',
 	},
-	dist  => { COMPRESS => 'gzip -9f', SUFFIX => 'gz', },
-	clean => { FILES    => 'Lamashtu-*' },
+	dist       => { COMPRESS => 'gzip -9f', SUFFIX => 'gz', },
+	clean      => { FILES    => 'Lamashtu-*' },
+	META_MERGE => {
+		"meta-spec" => { version => 2 },
+		resources   => {
+			repository => {
+				type => 'git',
+				url  => 'https://github.com/LilithSec/Lamashtu.git',
+				web  => 'https://github.com/LilithSec/Lamashtu',
+			},
+		},
+	},
 );
 
 # Compatibility with old versions of ExtUtils::MakeMaker

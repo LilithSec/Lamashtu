@@ -4,10 +4,24 @@ use strict;
 use warnings;
 use Test::More;
 
-plan tests => 1;
+my @modules = qw(
+	Lamashtu
+	Lamashtu::Config
+	Lamashtu::Client
+	Lamashtu::LogDrek
+	Lamashtu::App
+	Lamashtu::App::Command::start
+	Lamashtu::App::Command::stop
+	Lamashtu::App::Command::status
+	Lamashtu::App::Command::list
+	Lamashtu::App::Command::restart
+	Lamashtu::App::Command::add
+	Lamashtu::App::Command::remove
+	Lamashtu::App::Command::reload
+);
 
-BEGIN {
-    use_ok( 'Lamashtu' ) || print "Bail out!\n";
-}
+plan tests => scalar(@modules);
 
-diag( "Testing Lamashtu $Lamashtu::VERSION, Perl $], $^X" );
+use_ok($_) || print "Bail out!\n" for @modules;
+
+diag("Testing Lamashtu $Lamashtu::VERSION, Perl $], $^X");

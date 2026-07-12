@@ -1,0 +1,30 @@
+#!/bin/sh
+
+# PROVIDE: lamashtu
+# REQUIRE: NETWORKING
+# KEYWORD: shutdown
+#
+# Add the following to /etc/rc.conf[.local] to enable lamashtu...
+#
+#   lamashtu_enable="YES"
+#
+# Optionally...
+#
+#   lamashtu_config="/usr/local/etc/lamashtu.toml"
+
+. /etc/rc.subr
+
+name="lamashtu"
+rcvar="lamashtu_enable"
+
+load_rc_config $name
+
+: ${lamashtu_enable:="NO"}
+: ${lamashtu_config:="/usr/local/etc/lamashtu.toml"}
+
+pidfile="/var/run/lamashtu/pid"
+start_cmd="/usr/local/bin/lamashtu start --config ${lamashtu_config}"
+stop_cmd="/usr/local/bin/lamashtu stop"
+status_cmd="/usr/local/bin/lamashtu status"
+
+run_rc_command "$1"

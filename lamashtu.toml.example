@@ -1,0 +1,40 @@
+# Example Lamashtu config. Install to /usr/local/etc/lamashtu.toml.
+
+# manager settings (all optional; defaults shown)
+pcap_dir     = "/var/log/lamashtu/pcap"
+run_dir      = "/var/run/lamashtu"
+socket_group = "wheel"
+socket_mode  = "0660"
+sub_dir      = true
+stdout       = false
+stderr_warn  = false
+verify_interfaces = true   # check each set's interface against `tcpdump -D`
+rotate            = "secs" # default rotation dimension for sets: "secs", "size", or "both"
+
+# one tcpdump per set; the table key is the set name (/^[0-9A-Za-z_]+$/).
+# -G/-C/-w/-W/-i are injected by Lamashtu and must not appear in args.
+# rotate picks which dimension(s) rotate the pcap:
+#   rotate = "secs" -> tcpdump -G <secs>, filename uses a %s timestamp
+#   rotate = "size" -> tcpdump -C <size>, tcpdump appends an incrementing counter
+#   rotate = "both" -> tcpdump -G <secs> -C <size>, whichever trips first
+[sets.em0]
+interface = "em0"  # verified against `tcpdump -D`; defaults to the set name
+rotate    = "secs"
+secs      = 10     # tcpdump -G, rotate seconds
+args      = "tcp port 443"   # optional extra filter/flags
+
+[sets.em1]
+# interface defaults to the set name ("em1"); inherits the top-level rotate
+rotate = "size"
+size   = 64        # tcpdump -C, rotate MiB
+
+[sets.em2]
+rotate = "both"    # rotate whenever either the time OR the size limit is hit
+secs   = 300
+size   = 128
+
+# a command set runs an arbitrary long-lived program instead of tcpdump.
+# handy for testing the supervision + control API without root.
+#[sets.selftest]
+#type    = "command"
+#program = "cat"

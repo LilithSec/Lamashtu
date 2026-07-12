@@ -1,0 +1,43 @@
+#!perl
+
+use strict;
+use warnings;
+use Lamashtu::App;
+
+=head1 NAME
+
+lamashtu - manage supervised tcpdump PCAP capture sets.
+
+=head1 SYNOPSIS
+
+lamashtu [B<-s> <socket>] <command> [<args>]
+
+lamashtu start [B<--config>=<config>] [B<-f>|B<--foreground>]
+
+lamashtu stop
+
+lamashtu status [B<--all>] [<set>]
+
+lamashtu list
+
+lamashtu restart <set>
+
+lamashtu add <set> [B<--type>=<type>] [B<--args>=<args>] [B<--secs>=<n>] [B<--size>=<n>]
+
+lamashtu remove <set>
+
+lamashtu reload
+
+=head1 DESCRIPTION
+
+Manages Lamashtu, a daemon that supervises one C<tcpdump> per configured capture
+set, each writing rotating PCAP files. C<lamashtu start> reads the config
+(default C</usr/local/etc/lamashtu.toml>), daemonizes, and serves a JSON control
+API over a Unix socket (default C</var/run/lamashtu/socket>). The other commands
+talk to that socket.
+
+See L<Lamashtu> for the config file format.
+
+=cut
+
+Lamashtu::App->run;

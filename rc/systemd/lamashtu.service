@@ -1,0 +1,19 @@
+# systemd unit for the Lamashtu packet capture manager
+#
+#   cp rc/systemd/lamashtu.service /etc/systemd/system/
+#   systemctl daemon-reload
+#   systemctl enable --now lamashtu
+
+[Unit]
+Description=Lamashtu packet capture manager
+Documentation=man:lamashtu(1)
+After=network.target
+
+[Service]
+Type=forking
+PIDFile=/var/run/lamashtu/pid
+ExecStart=/usr/local/bin/lamashtu start
+ExecStop=/usr/local/bin/lamashtu stop
+
+[Install]
+WantedBy=multi-user.target
