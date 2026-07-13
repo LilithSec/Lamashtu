@@ -142,6 +142,14 @@ sub new {
 		( defined $opts{rotate}           ? ( default_rotate    => $opts{rotate} )            : () ),
 	);
 
+	# --- the Neti gate: identity challenge config for the control socket ---
+	# Off by default, in which case the socket_group/socket_mode perms are the
+	# only gate. When on, authed_users/authed_groups (plus UID 0) may drive it.
+	my $authed_users  = defined( $opts{authed_users} )  ? $opts{authed_users}  : [];
+	my $authed_groups = defined( $opts{authed_groups} ) ? $opts{authed_groups} : [];
+	die('authed_users must be an array')  if ref($authed_users) ne 'ARRAY';
+	die('authed_groups must be an array') if ref($authed_groups) ne 'ARRAY';
+
 	my $self = {
 		pcap_dir          => $opts{pcap_dir},
 		stdout            => $opts{stdout},
@@ -150,6 +158,10 @@ sub new {
 		sub_dir           => $opts{sub_dir},
 		verify_interfaces => $opts{verify_interfaces},
 		rotate            => $opts{rotate},
+		enable_auth       => $opts{enable_auth} ? 1 : 0,
+		authed_users      => $authed_users,
+		authed_groups     => $authed_groups,
+		auth_temp_dir     => $opts{auth_temp_dir},
 	};
 	bless $self;
 
@@ -368,24 +380,36 @@ sub run {
 
 	$self->create_sessions;
 
+	# The Neti gate: with enable_auth on, JSONUnix runs the unix-ownership
+	# challenge and every command below re-checks the authenticated user against
+	# authed_users/authed_groups via _authorize. With it off, auth_required is 0
+	# and the socket perms alone gate access.
 	my $server = POE::Component::Server::JSONUnix->spawn(
-		socket_path => $self->socket_path,
-		socket_mode => $self->{socket_mode},
-		alias       => 'lamashtu_server',
-		on_error    => sub {
+		socket_path   => $self->socket_path,
+		socket_mode   => $self->{socket_mode},
+		alias         => 'lamashtu_server',
+		auth_required => $self->{enable_auth} ? 1 : 0,
+		( defined( $self->{auth_temp_dir} ) ? ( auth_temp_dir => $self->{auth_temp_dir} ) : () ),
+		on_error => sub {
 			my ( $op, $errnum, $errstr ) = @_;
 			$self->log_message( status => 'socket ' . $op . ': ' . $errstr . ' (' . $errnum . ')', error => 1 );
 		},
 		commands => {
-			status     => sub { return $self->_cmd_status; },
-			status_all => sub { return $self->_cmd_status( all => 1 ); },
-			status_set => sub { my ( undef, $req ) = @_; return $self->_cmd_status_set($req); },
-			list       => sub { return { sets => [ sort keys %{ $self->{tcpdump_sets} } ] }; },
-			restart    => sub { my ( undef, $req ) = @_; return $self->_cmd_restart($req); },
-			add_set    => sub { my ( undef, $req ) = @_; return $self->_cmd_add_set($req); },
-			remove_set => sub { my ( undef, $req ) = @_; return $self->_cmd_remove_set($req); },
-			reload     => sub { return $self->_cmd_reload; },
+			status     => sub { my ( undef, undef, $ctx ) = @_; $self->_authorize($ctx); return $self->_cmd_status; },
+			status_all => sub { my ( undef, undef, $ctx ) = @_; $self->_authorize($ctx); return $self->_cmd_status( all => 1 ); },
+			status_set => sub { my ( undef, $req, $ctx ) = @_; $self->_authorize($ctx); return $self->_cmd_status_set($req); },
+			list       => sub {
+				my ( undef, undef, $ctx ) = @_;
+				$self->_authorize($ctx);
+				return { sets => [ sort keys %{ $self->{tcpdump_sets} } ] };
+			},
+			restart    => sub { my ( undef, $req, $ctx ) = @_; $self->_authorize($ctx); return $self->_cmd_restart($req); },
+			add_set    => sub { my ( undef, $req, $ctx ) = @_; $self->_authorize($ctx); return $self->_cmd_add_set($req); },
+			remove_set => sub { my ( undef, $req, $ctx ) = @_; $self->_authorize($ctx); return $self->_cmd_remove_set($req); },
+			reload     => sub { my ( undef, undef, $ctx ) = @_; $self->_authorize($ctx); return $self->_cmd_reload; },
 			stop       => sub {
+				my ( undef, undef, $ctx ) = @_;
+				$self->_authorize($ctx);
 				$self->log_message( status => 'stop requested' );
 				$POE::Kernel::poe_kernel->post( 'lamashtu_ctl', 'shutdown' );
 				return { stopping => 1 };
@@ -405,21 +429,62 @@ sub run {
 		inline_states => {
 			_start => sub {
 				$_[KERNEL]->alias_set('lamashtu_ctl');
-				$_[KERNEL]->sig( INT  => 'shutdown' );
-				$_[KERNEL]->sig( TERM => 'shutdown' );
+				$_[KERNEL]->sig( INT  => 'terminate' );
+				$_[KERNEL]->sig( TERM => 'terminate' );
+			},
+			# INT/TERM are terminal signals: unless we mark them handled, POE
+			# tears every session down after dispatch -- which would drop the
+			# DaemonHelper sessions before their children are reaped and push the
+			# reap onto the end-of-run fallback reaper. sig_handled() keeps the
+			# kernel running so the normal graceful path (below) can reap cleanly,
+			# exactly as the socket `stop` command already does.
+			terminate => sub {
+				$_[KERNEL]->sig_handled;
+				$_[KERNEL]->yield('shutdown');
 			},
 			shutdown => sub {
-				my $kernel = $_[KERNEL];
-				# graceful teardown: stop the sets (restart off + TERM; DaemonHelper
-				# reaps them and won't respawn), shut the control socket, drop our
-				# alias and signal watchers. With no children, no aliases, and no
-				# pending events, POE::Kernel->run returns on its own -- no ->stop,
-				# which would kill the pending reply and leak the child.
-				$self->_shutdown_sets;
-				$kernel->post( 'lamashtu_server', 'shutdown' ) if $self->{server};
-				$kernel->alias_remove('lamashtu_ctl');
+				my ( $kernel, $heap ) = @_[ KERNEL, HEAP ];
+
+				# ignore a second INT/TERM/stop once teardown is under way
+				return if $heap->{shutting_down};
+				$heap->{shutting_down} = 1;
+
+				# stop the sets (restart off + TERM) and collect the pids we
+				# actually signalled. We then watch each one with sig_child so
+				# POE reaps it while THIS session is still alive -- the watch
+				# holds the session up until the reap. That is what keeps the
+				# children off POE's end-of-run fallback reaper (the "reaped
+				# when run() is ready to return" warning) and out of the process
+				# table as zombies.
+				my @pids = $self->_shutdown_sets;
+
+				# stop answering signals; the sig_child watches below are now the
+				# session's keepalive until every child is gone
 				$kernel->sig('INT');
 				$kernel->sig('TERM');
+
+				$heap->{pending} = 0;
+				foreach my $pid (@pids) {
+					$kernel->sig_child( $pid, 'set_reaped' );
+					$heap->{pending}++;
+				}
+
+				# nothing live to wait on -> tear down immediately
+				$kernel->yield('finish_shutdown') if !$heap->{pending};
+			},
+			set_reaped => sub {
+				my ( $kernel, $heap ) = @_[ KERNEL, HEAP ];
+				$heap->{pending}--;
+				$kernel->yield('finish_shutdown') if $heap->{pending} <= 0;
+			},
+			finish_shutdown => sub {
+				my $kernel = $_[KERNEL];
+				# children are reaped: close the control socket and drop our
+				# alias. With no children, no aliases, and no pending events,
+				# POE::Kernel->run returns on its own -- no ->stop, which would
+				# kill any pending reply and leak the child.
+				$kernel->post( 'lamashtu_server', 'shutdown' ) if $self->{server};
+				$kernel->alias_remove('lamashtu_ctl');
 			},
 		},
 	);
@@ -437,19 +502,89 @@ sub run {
 =head2 _shutdown_sets
 
 Stops every supervised tcpdump: disables restart and sends C<TERM>. Replaces the
-old C<DESTROY>-as-signal-handler teardown.
+old C<DESTROY>-as-signal-handler teardown. Returns the list of child PIDs that
+were actually signalled, so the caller can C<sig_child>-watch them to completion
+rather than leaving them for POE's end-of-run fallback reaper.
 
 =cut
 
 sub _shutdown_sets {
 	my ($self) = @_;
 
+	my @pids;
 	foreach my $set ( keys %{$Lamashtu::TCPDUMP_DH_HOLDER} ) {
-		eval { $Lamashtu::TCPDUMP_DH_HOLDER->{$set}->restart_ctl( restart_ctl => 0 ); };
-		eval { $Lamashtu::TCPDUMP_DH_HOLDER->{$set}->kill( signal => 'TERM' ); };
+		my $dh = $Lamashtu::TCPDUMP_DH_HOLDER->{$set};
+		# the child POE knows about (and will reap) is $dh->pid; grab it before
+		# the TERM so we only wait on sets that were genuinely running.
+		my $pid = eval { $dh->pid };
+		eval { $dh->restart_ctl( restart_ctl => 0 ); };
+		my $signalled = eval { $dh->kill( signal => 'TERM' ); };
+		push( @pids, $pid ) if defined($pid) && $signalled;
 	}
 
-	return;
+	return @pids;
+}
+
+=head2 _authorize
+
+The Neti gate. Given the L<POE::Component::Server::JSONUnix> context of an
+authenticated request, dies unless the user behind it may drive the daemon. A
+no-op when C<enable_auth> is off. UID 0 always passes, as does any user in
+C<authed_users> or a member of one of C<authed_groups>.
+
+=cut
+
+sub _authorize {
+	my ( $self, $ctx ) = @_;
+
+	return if !$self->{enable_auth};
+
+	my $uid      = $ctx->uid;
+	my $username = $ctx->username;
+
+	# should be unreachable: JSONUnix rejects unauthed commands before dispatch
+	die('authentication required') if !defined($uid);
+
+	return if $uid == 0;
+	$username = '' if !defined($username);
+
+	return if $self->_user_in_lists( $username, $uid, $self->{authed_users}, $self->{authed_groups} );
+
+	die( 'The user "' . $username . '" is not permitted past the Neti gate' );
+}
+
+=head2 _user_in_lists
+
+True if C<$username> is in the C<$users> list or C<$uid> belongs to one of the
+C<$groups> (by primary group or membership). Membership is resolved at call
+time, so passwd/group changes take effect without a restart.
+
+=cut
+
+sub _user_in_lists {
+	my ( $self, $username, $uid, $users, $groups ) = @_;
+
+	foreach my $user ( @{$users} ) {
+		return 1 if $user eq $username;
+	}
+
+	# the user's primary group
+	my $primary_gid = ( getpwuid($uid) )[3];
+	my $primary_group;
+	$primary_group = getgrgid($primary_gid) if defined($primary_gid);
+
+	foreach my $group ( @{$groups} ) {
+		return 1 if defined($primary_group) && $group eq $primary_group;
+
+		# unknown groups just never match rather than erroring
+		my $members = ( getgrnam($group) )[3];
+		next if !defined($members);
+		foreach my $member ( split( /\s+/, $members ) ) {
+			return 1 if $member eq $username;
+		}
+	}
+
+	return 0;
 }
 
 #

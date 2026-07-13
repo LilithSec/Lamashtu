@@ -5,6 +5,7 @@ use strict;
 use warnings;
 use IO::Socket::UNIX ();
 use JSON::MaybeXS qw( encode_json decode_json );
+use File::Temp ();
 
 =head1 NAME
 
@@ -80,9 +81,19 @@ sub call {
 		my $request = { command => $command };
 		$request->{args} = $args if defined($args);
 
-		print $sock encode_json($request) . "\n";
-		my $line = <$sock> || die( 'no response from ' . $self->{socket} );
-		$response = decode_json($line);
+		$response = $self->_send_request( $sock, $request );
+
+		# the daemon's Neti gate (enable_auth) rejects the first command with
+		# "authentication required"; auth state is per connection, so complete
+		# the unix-ownership challenge on this same socket and resend.
+		if (   defined( $response->{status} )
+			&& $response->{status} eq 'error'
+			&& defined( $response->{error} )
+			&& $response->{error} =~ /^authentication required/ )
+		{
+			$self->_authenticate($sock);
+			$response = $self->_send_request( $sock, $request );
+		}
 
 		close($sock);
 		alarm(0);
@@ -92,6 +103,52 @@ sub call {
 	die($error) if $error;
 
 	return $response;
+}
+
+# sends one request on the socket and returns the decoded response hashref
+sub _send_request {
+	my ( $self, $sock, $request ) = @_;
+
+	print $sock encode_json($request) . "\n";
+	my $line = <$sock> || die( 'no response from ' . $self->{socket} );
+	my $response = decode_json($line);
+	die('response is not a JSON object') if ref($response) ne 'HASH';
+
+	return $response;
+}
+
+# completes the POE::Component::Server::JSONUnix unix-ownership challenge on the
+# passed connection: auth_start hands back a cookie and a temp dir, we write the
+# cookie to a file there (which we own -- that ownership is the proof), and point
+# auth_verify at it.
+sub _authenticate {
+	my ( $self, $sock ) = @_;
+
+	my $start = $self->_send_request( $sock, { command => 'auth_start' } );
+	if ( !defined( $start->{status} ) || $start->{status} ne 'ok' ) {
+		die( 'auth_start failed: ' . ( $start->{error} // 'unknown error' ) . "\n" );
+	}
+	my $cookie   = $start->{result}{cookie};
+	my $temp_dir = $start->{result}{temp_dir};
+	die("auth_start did not return a cookie and temp_dir\n") if !defined($cookie) || !defined($temp_dir);
+
+	my ( $cookie_fh, $cookie_file )
+		= File::Temp::tempfile( 'lamashtu-auth-XXXXXXXX', DIR => $temp_dir, UNLINK => 0 );
+	print $cookie_fh $cookie;
+	close($cookie_fh);
+
+	my $verify;
+	eval { $verify = $self->_send_request( $sock, { command => 'auth_verify', args => { path => $cookie_file } } ); };
+	my $verify_error = $@;
+	# the server unlinks it on success; make sure it is gone either way
+	unlink($cookie_file) if -e $cookie_file;
+	die($verify_error) if $verify_error;
+
+	if ( !defined( $verify->{status} ) || $verify->{status} ne 'ok' ) {
+		die( 'auth_verify failed: ' . ( $verify->{error} // 'unknown error' ) . "\n" );
+	}
+
+	return;
 }
 
 =head2 call_ok

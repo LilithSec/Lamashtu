@@ -11,6 +11,14 @@ stderr_warn  = false
 verify_interfaces = true   # check each set's interface against `tcpdump -D`
 rotate            = "secs" # default rotation dimension for sets: "secs", "size", or "both"
 
+# The Neti gate: an identity challenge on top of the socket perms. Off by
+# default (perms alone gate access). When on, only UID 0, authed_users, and
+# members of authed_groups may drive the daemon. See docs/security.md.
+#enable_auth   = true
+#authed_users  = [ "alice" ]
+#authed_groups = [ "wheel" ]
+#auth_temp_dir = "/var/run/lamashtu"   # dir for the ownership-challenge cookies
+
 # one tcpdump per set; the table key is the set name (/^[0-9A-Za-z_]+$/).
 # -G/-C/-w/-W/-i are injected by Lamashtu and must not appear in args.
 # rotate picks which dimension(s) rotate the pcap:

@@ -18,6 +18,23 @@ hash under `sets` defines one capture set, named for the hash — the hash at
 | `rotate`            | `"secs"`                 | default rotation dimension for sets that omit one          |
 | `stdout`            | `false`                  | also print log lines to stdout, not only syslog            |
 | `stderr_warn`       | `false`                  | send error log lines to stderr as warnings                 |
+| `enable_auth`       | `false`                  | open the Neti gate — an identity challenge on top of the socket perms |
+| `authed_users`      | `[]`                     | users allowed past the Neti gate                           |
+| `authed_groups`     | `[]`                     | groups whose members are allowed past the Neti gate        |
+| `auth_temp_dir`     | system temp dir          | directory for the ownership-challenge cookie files         |
+
+### The Neti gate
+
+Neti is the gatekeeper of Kur, and the control socket can have one too. By
+default the `socket_group`/`socket_mode` perms are the whole story — anyone who
+can write to the socket can drive Lamashtu. Setting `enable_auth = true` opens
+the Neti gate proper: the [POE::Component::Server::JSONUnix](https://metacpan.org/pod/POE::Component::Server::JSONUnix)
+unix-ownership challenge makes every caller prove which user they are before any
+command is honored, and only UID 0, users in `authed_users`, and members of
+`authed_groups` are let through. Membership is resolved at request time, so
+passwd/group changes take effect without a restart. `Lamashtu::Client` (and the
+`lamashtu` CLI) complete the challenge transparently. Guard the socket with the
+perms regardless — see [security.md](security.md).
 
 ## Set settings
 

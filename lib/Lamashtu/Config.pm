@@ -64,7 +64,13 @@ sub load {
 	my $out = {};
 
 	# manager settings, straight passthrough of the ones Lamashtu knows
-	foreach my $key (qw( pcap_dir run_dir socket_group socket_mode sub_dir stdout stderr_warn verify_interfaces rotate )) {
+	foreach my $key (
+		qw(
+		pcap_dir run_dir socket_group socket_mode sub_dir stdout stderr_warn verify_interfaces rotate
+		enable_auth authed_users authed_groups auth_temp_dir
+		)
+		)
+	{
 		$out->{$key} = $config->{$key} if defined $config->{$key};
 	}
 

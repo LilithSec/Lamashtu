@@ -74,12 +74,25 @@ on the BSDs, `root` on Linux). Group membership on that socket is the access
 control: whoever can write to it can add, remove, and restart captures, and read
 the daemon's view of the hoard. Pick the group accordingly.
 
-Unlike [Ereshkigal](https://github.com/LilithSec/Ereshkigal), Lamashtu does
-**not** currently layer an identity challenge (Ereshkigal's "Neti at the gate")
-on top of the socket permissions — the perms are the whole story. The underlying
+## Neti at the gate: the enable_auth trust model
+
+By default the socket perms are the whole story. Setting `enable_auth = true`
+layers an identity challenge on top — Neti, the gatekeeper of Kur, at the door.
+Mechanically this is the
 [POE::Component::Server::JSONUnix](https://metacpan.org/pod/POE::Component::Server::JSONUnix)
-supports such a challenge, so it is a natural future addition, but do not assume
-it today. Guard the socket, and the `run_dir` it lives in, with the file mode.
+unix-ownership challenge: the caller writes a cookie handed to it into a file
+inside `auth_temp_dir`, and because a correctly-named cookie file owned by UID
+*N* can only have been written by UID *N*, the daemon learns which user is on the
+other end. Only UID 0, users in `authed_users`, and members of `authed_groups`
+are honored; everyone else is refused past the Neti gate. Membership is resolved
+at request time, so passwd/group changes apply without a restart, and
+`Lamashtu::Client` (and the `lamashtu` CLI) complete the challenge transparently.
+
+The gate is defense in depth, not a replacement for the perms: anyone who can
+write to the socket at all is still speaking to the daemon (and can, e.g., stall
+it) before the challenge, and anyone who can write into `auth_temp_dir` as
+another user could forge that user's identity — so keep both the socket, the
+`run_dir` it lives in, and `auth_temp_dir` guarded with the file mode.
 
 ## Running as root
 

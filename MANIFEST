@@ -28,6 +28,8 @@ rc/systemd/lamashtu.service
 README.md
 src_bin/lamashtu
 t/00-load.t
+t/auth.t
+t/auth-server.t
 t/cli.t
 t/client.t
 t/config.t
@@ -36,3 +38,4 @@ t/manifest.t
 t/pod-coverage.t
 t/pod.t
 t/server.t
+t/shutdown.t

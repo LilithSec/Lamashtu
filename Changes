@@ -2,4 +2,8 @@ Revision history for Lamashtu
 
 0.01    Date/time
         First version, released on an unsuspecting world.
+        - A optional Neti gate on the control socket, the enable_auth unix
+          ownership challenge, with authed_users/authed_groups deciding who
+          may drive the daemon. Off by default, where socket_group/socket_mode
+          gate the socket as before. UID 0 always passes.
 
