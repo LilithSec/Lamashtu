@@ -36,7 +36,7 @@ spool, can take other services down with it.
   exposed, since Lamashtu manages `-w`/`-C`/`-G` itself; pruning is an external
   concern.)
 - Size your rotation so individual files are a manageable unit to move or delete
-  (`rotate`, `secs`, `size` — see [configuration.md](configuration.md)).
+  (`rotate`, `secs`, `size` — see [configuration](configuration.md)).
 
 ## Virani reads the hoard
 

@@ -56,7 +56,7 @@ cpanm POE::Component::Server::JSONUnix POE::Wheel::Run::DaemonHelper
 
 ## First run
 
-Write a config (see [configuration.md](configuration.md)), then...
+Write a config (see [configuration](configuration.md)), then...
 
 ```shell
 lamashtu start
@@ -66,7 +66,7 @@ lamashtu status
 `start` reads `/usr/local/etc/lamashtu.toml`, daemonizes, and looses a tcpdump
 per set. Capturing raw packets and enumerating interfaces (`tcpdump -D`) both
 need privilege, so in practice Lamashtu runs as root — see
-[security.md](security.md) for what that implies. To try her out unprivileged,
+[security](security.md) for what that implies. To try her out unprivileged,
 use a `command` type set (see the examples), which runs a harmless program
 instead of tcpdump.
 
@@ -109,4 +109,4 @@ automatically at startup — but if you point `run_dir` somewhere deeper, make s
 the parents exist at boot (a `RuntimeDirectory=` line or a tmpfiles.d entry does
 it on systemd). Unix socket paths are limited to roughly 104 characters on the
 BSDs, so keep `run_dir` short. And make sure `pcap_dir` lives somewhere with room
-to spare — the hoard only grows (see [security.md](security.md)).
+to spare — the hoard only grows (see [security](security.md)).

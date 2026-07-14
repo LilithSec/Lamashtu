@@ -108,6 +108,6 @@ The `lamashtu` CLI only manages the *capturing* — it does not read the pcaps
 back. For that, hand the hoard to [Virani](https://github.com/LilithSec/Virani),
 the household's reader, which carves matching traffic out of a directory of pcaps
 by time range and BPF filter. See
-[architecture.md](architecture.md#making-the-hoard-searchable-by-virani) and
-[examples.md](examples.md#reading-the-hoard-back-with-virani) for wiring a Virani
+[architecture](architecture.md#making-the-hoard-searchable-by-virani) and
+[examples](examples.md#reading-the-hoard-back-with-virani) for wiring a Virani
 set onto a Lamashtu set.

@@ -1,7 +1,7 @@
 # Examples
 
 Worked scenarios to copy from. Paths assume the defaults; adjust to taste. Mind
-[security.md](security.md) before any of these touch real traffic.
+[security](security.md) before any of these touch real traffic.
 
 ## Capture the WAN uplink, rotating every five minutes
 
@@ -154,5 +154,5 @@ than a week...
 find /var/log/lamashtu/pcap -type f -name '*.pcap*' -mtime +7 -delete
 ```
 
-Size it to your disk and your retention needs — see [security.md](security.md)
+Size it to your disk and your retention needs — see [security](security.md)
 for why holding less is holding less liability.

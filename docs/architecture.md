@@ -65,7 +65,7 @@ one JSON object per line in each direction.
 ```
 
 The commands are `status`, `status_all`, `status_set`, `list`, `restart`,
-`add_set`, `remove_set`, `reload`, and `stop`. See [usage.md](usage.md) for
+`add_set`, `remove_set`, `reload`, and `stop`. See [usage](usage.md) for
 driving the socket from your own integrations.
 
 ## Sets, interfaces, and rotation

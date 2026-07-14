@@ -34,7 +34,7 @@ command is honored, and only UID 0, users in `authed_users`, and members of
 `authed_groups` are let through. Membership is resolved at request time, so
 passwd/group changes take effect without a restart. `Lamashtu::Client` (and the
 `lamashtu` CLI) complete the challenge transparently. Guard the socket with the
-perms regardless — see [security.md](security.md).
+perms regardless — see [security](security.md).
 
 ## Set settings
 
@@ -73,7 +73,7 @@ appends an incrementing counter instead (`wan.pcap1`, `wan.pcap2`, ...).
   tcpdump-specific keys and skipping the interface check. It is the seam that
   lets the daemon and its control socket be exercised without root or a live
   interface (the test suite uses `cat`), and it is handy for a quick unprivileged
-  try (see [examples.md](examples.md)).
+  try (see [examples](examples.md)).
 
 ## A complete example
 
